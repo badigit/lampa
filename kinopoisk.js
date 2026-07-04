@@ -3,9 +3,42 @@
     var network = new Lampa.Reguest();
 
     function getRandomKinopoiskTechKey() {
-        const keys = ['8c8e1a50-6322-4135-8875-5d40a5420d86', 'f1d94351-2911-4485-b037-97817098724e', '0cb735ff-8ff0-4140-89f4-e638bd053a32'];
+        const keys = ['7cfaa892-27f7-473a-a44c-605af8d5a616', '8c8e1a50-6322-4135-8875-5d40a5420d86', 'f1d94351-2911-4485-b037-97817098724e', '0cb735ff-8ff0-4140-89f4-e638bd053a32'];
         const randomIndex = Math.floor(Math.random() * keys.length);
         return keys[randomIndex];
+    }
+
+    function stringifyError(data) {
+        try {
+            if (typeof data === 'string') return data;
+            return JSON.stringify(data, Object.getOwnPropertyNames(data));
+        } catch (e) {
+            return String(data);
+        }
+    }
+
+    function getTmdbBaseUrl() {
+        return Lampa.Utils.protocol() + 'tmdb.' + Lampa.Manifest.cub_domain + '/3';
+    }
+
+    function getTmdbFallbackBaseUrl() {
+        return 'https://api.themoviedb.org/3';
+    }
+
+    function requestTmdb(url, fallbackUrl, success, error) {
+        console.log('Kinopoisk', 'TMDB request: ' + url);
+        network.silent(url, success, function(data) {
+            console.log('Kinopoisk', 'TMDB proxy error for ' + url + ', data: ' + stringifyError(data));
+            if (fallbackUrl) {
+                console.log('Kinopoisk', 'TMDB fallback request: ' + fallbackUrl);
+                network.silent(fallbackUrl, success, function(fallbackData) {
+                    console.log('Kinopoisk', 'TMDB fallback error for ' + fallbackUrl + ', data: ' + stringifyError(fallbackData));
+                    error(fallbackData);
+                });
+            } else {
+                error(data);
+            }
+        });
     }
 
     function calculateProgress(total, current) {
@@ -55,18 +88,20 @@
                             var movieYear = data.year;
                             if (movieIMDBid) {
                                 console.log('Kinopoisk', 'IMDB movie id found: ' + String(movieIMDBid) + ' for kinopoisk id: ' + String(m.movie.id));
-                                var url = Lampa.Utils.protocol() + 'tmdb.' + Lampa.Manifest.cub_domain + '/3/find/' + movieIMDBid + '?external_source=imdb_id&language=ru&api_key=4ef0d7355d9ffb5151e987764708ce96';
+                                var urlPath = '/find/' + movieIMDBid + '?external_source=imdb_id&language=ru&api_key=4ef0d7355d9ffb5151e987764708ce96';
                             } else {
                                 if (movieType === 'FILM') {
                                     console.log('Kinopoisk', 'No IMDB movie id found for kinopoisk id: ' + String(m.movie.id) + ', will search by movie title: ' + movieTitle);
-                                    var url = Lampa.Utils.protocol() + 'tmdb.'+ Lampa.Manifest.cub_domain +'/3/search/movie?query=' + encodeURIComponent(movieTitle) + '&api_key=4ef0d7355d9ffb5151e987764708ce96&year=' + String(movieYear) + '&language=ru';
+                                    var urlPath = '/search/movie?query=' + encodeURIComponent(movieTitle) + '&api_key=4ef0d7355d9ffb5151e987764708ce96&year=' + String(movieYear) + '&language=ru';
                                 } else { // TV_SERIES
                                     console.log('Kinopoisk', 'No IMDB movie id found for kinopoisk id: ' + String(m.movie.id) + ', will search by tv series title: ' + movieTitle);
-                                    var url = Lampa.Utils.protocol() + 'tmdb.'+ Lampa.Manifest.cub_domain +'/3/search/tv?query=' + encodeURIComponent(movieTitle) + '&api_key=4ef0d7355d9ffb5151e987764708ce96&year=' + String(movieYear) + '&language=ru';
+                                    var urlPath = '/search/tv?query=' + encodeURIComponent(movieTitle) + '&api_key=4ef0d7355d9ffb5151e987764708ce96&year=' + String(movieYear) + '&language=ru';
                                 }
                             }
+                            var url = getTmdbBaseUrl() + urlPath;
+                            var fallbackUrl = getTmdbFallbackBaseUrl() + urlPath;
                             // getting movie details
-                            network.silent(url, function(data) {
+                            requestTmdb(url, fallbackUrl, function(data) {
                                 if(data) {
                                     if (data.movie_results && data.movie_results[0]) {
                                         var movieItem = data.movie_results[0];
@@ -104,7 +139,7 @@
                                 }
                                 calculateProgress(receivedMoviesCount, processedItems++);
                             }, function(data) {
-                                console.log('Kinopoisk', 'apitmdb.cub.red error, data: ' + String(data));
+                                console.log('Kinopoisk', 'TMDB request failed, data: ' + stringifyError(data));
                                 calculateProgress(receivedMoviesCount, processedItems++);
                             });
                         } else {
