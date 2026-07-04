@@ -2,10 +2,8 @@
     'use strict';
     var network = new Lampa.Reguest();
 
-    function getRandomKinopoiskTechKey() {
-        const keys = ['7cfaa892-27f7-473a-a44c-605af8d5a616', '8c8e1a50-6322-4135-8875-5d40a5420d86', 'f1d94351-2911-4485-b037-97817098724e', '0cb735ff-8ff0-4140-89f4-e638bd053a32'];
-        const randomIndex = Math.floor(Math.random() * keys.length);
-        return keys[randomIndex];
+    function getKinopoiskApiKey() {
+        return (Lampa.Storage.get('kinopoisk_api_key', '') || '').trim();
     }
 
     function stringifyError(data) {
@@ -152,7 +150,7 @@
                     }, false, {
                         type: 'get',
                         headers: {
-                            'X-API-KEY': getRandomKinopoiskTechKey()
+                            'X-API-KEY': getKinopoiskApiKey()
                         }
                     });
                 } else {
@@ -364,6 +362,19 @@
             },
             field: {
                 name: 'Аккаунт',
+            }
+        })
+        Lampa.SettingsApi.addParam({
+            component: 'kinopoisk',
+            param: {
+                name: 'kinopoisk_api_key',
+                type: 'input',
+                default: ''
+            },
+            field: {
+                name: 'API ключ Kinopoisk',
+                placeholder: 'X-API-KEY',
+                description: 'Хранится локально на устройстве'
             }
         })
         var kinopoisk_email = Lampa.Storage.get('kinopoisk_email', false);
