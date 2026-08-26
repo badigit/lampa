@@ -41,17 +41,12 @@
         });
     }
 
-    function calculateProgress(total, current) {
+    function calculateProgress(total, current, oncomplete) {
         if(total == current) {
             Lampa.Noty.show('Обновление списка фильмов Кинопоиска завершено (' + String(total) + ')');
+            if(oncomplete) oncomplete();
             if(Lampa.Storage.get('kinopoisk_launched_before', false) == false) {
                 Lampa.Storage.set('kinopoisk_launched_before', true);
-                Lampa.Activity.push({
-                    url: '',
-                    title: 'Кинопоиск',
-                    component: 'kinopoisk',
-                    page: 1
-                });
             }
         }
     }
@@ -100,40 +95,60 @@
         return result;
     }
 
+    function sectionMovies(movies, section) {
+        if(section === 'movies') return prepareMovies(movies, {filter: function(movie) {
+            return movieKind(movie) === 'movie' && !isAnimation(movie);
+        }});
+        if(section === 'series') return prepareMovies(movies, {filter: function(movie) {
+            return movieKind(movie) === 'tv' && !isAnimation(movie);
+        }});
+        if(section === 'animation') return prepareMovies(movies, {filter: isAnimation});
+        if(section === 'unwatched') return prepareMovies(movies, {
+            keepWatched: true,
+            filter: function(movie) {
+                return !isWatched(movie);
+            }
+        });
+        return prepareMovies(movies);
+    }
+
     function dashboardRows(movies) {
-        var rows = [
+        var definitions = [
             {
                 title: 'Фильмы',
-                results: prepareMovies(movies, {filter: function(movie) {
-                    return movieKind(movie) === 'movie' && !isAnimation(movie);
-                }}),
-                nomore: true
+                section: 'movies'
             },
             {
                 title: 'Сериалы',
-                results: prepareMovies(movies, {filter: function(movie) {
-                    return movieKind(movie) === 'tv' && !isAnimation(movie);
-                }}),
-                nomore: true
+                section: 'series'
             },
             {
                 title: 'Мультфильмы',
-                results: prepareMovies(movies, {filter: isAnimation}),
-                nomore: true
+                section: 'animation'
             },
             {
                 title: 'Непросмотренные',
-                results: prepareMovies(movies, {
-                    keepWatched: true,
-                    filter: function(movie) {
-                        return !isWatched(movie);
-                    }
-                }),
-                nomore: true
+                section: 'unwatched'
             }
         ];
 
-        return rows.filter(function(row) {
+        return definitions.map(function(definition) {
+            var all = sectionMovies(movies, definition.section);
+            return {
+                title: definition.title,
+                results: all.slice(0, 5),
+                more: all.length > 5,
+                onMore: function() {
+                    Lampa.Activity.push({
+                        url: '',
+                        title: definition.title,
+                        component: 'kinopoisk',
+                        section: definition.section,
+                        page: 1
+                    });
+                }
+            };
+        }).filter(function(row) {
             return row.results.length > 0;
         });
     }
@@ -168,7 +183,7 @@
         });
     }
 
-    function processKinopoiskData(data) {
+    function processKinopoiskData(data, oncomplete) {
         // use cache
         if(data && data.data.userProfile && data.data.userProfile.userData && data.data.userProfile.userData.plannedToWatch) {
             var kinopoiskMovies = Lampa.Storage.get('kinopoisk_movies', []);
@@ -179,6 +194,7 @@
             console.log('Kinopoisk', "Movies received count: " + String(receivedMoviesCount));
             if(receivedMoviesCount == 0) {
                 Lampa.Noty.show('В списке "Буду смотреть" Кинопоиска нет фильмов');
+                if(oncomplete) oncomplete();
             }
             const receivedMovieIds = new Set(receivedMovies.map(m => String(m.movie.id)));
             const receivedMovieOrder = {};
@@ -260,18 +276,18 @@
                                 } else {
                                     console.log('Kinopoisk', 'No movie found by IMDB id: ' + String(movieIMDBid));
                                 }
-                                calculateProgress(receivedMoviesCount, processedItems++);
+                                calculateProgress(receivedMoviesCount, processedItems++, oncomplete);
                             }, function(data) {
                                 console.log('Kinopoisk', 'TMDB request failed, data: ' + stringifyError(data));
-                                calculateProgress(receivedMoviesCount, processedItems++);
+                                calculateProgress(receivedMoviesCount, processedItems++, oncomplete);
                             });
                         } else {
                             console.log('Kinopoisk', 'No movie found for kinopoisk id: ' + String(m.movie.id) + ', movie: ' + title);
-                            calculateProgress(receivedMoviesCount, processedItems++);
+                            calculateProgress(receivedMoviesCount, processedItems++, oncomplete);
                         }
                     }, function(data) {
                         console.log('Kinopoisk', 'kinopoiskapiunofficial error, data: ' + String(data));
-                        calculateProgress(receivedMoviesCount, processedItems++);
+                        calculateProgress(receivedMoviesCount, processedItems++, oncomplete);
                     }, false, {
                         type: 'get',
                         headers: {
@@ -280,7 +296,7 @@
                     });
                 } else {
                     console.log('Kinopoisk', 'Reading data from local storage for movie: ' + String(m.movie.id))
-                    calculateProgress(receivedMoviesCount, processedItems++);
+                    calculateProgress(receivedMoviesCount, processedItems++, oncomplete);
                 }
             })
         } else {
@@ -290,13 +306,14 @@
         }
     }
 
-    function getKinopoiskData() {
+    function getKinopoiskData(oncomplete, onerror) {
         console.log('Kinopoisk', 'Starting to get Kinopoisk data...');
         network.silent('https://frigate.dimba.ru/kinopoisk/v1/planned?user=372870', function(data) { // on success
-            processKinopoiskData(data);
+            processKinopoiskData(data, oncomplete);
         }, function(data) { // on error
             console.log('Kinopoisk', 'Error, personal proxy', data);
             Lampa.Noty.show('Не удалось обновить список Кинопоиска');
+            if(onerror) onerror();
         });
     }
 
@@ -320,12 +337,30 @@
     };
 
     function component(object) {
+        if(object.section) {
+            var category = new Lampa.InteractionCategory(object);
+            category.create = function() {
+                var results = sectionMovies(Lampa.Storage.get('kinopoisk_movies', []), object.section);
+                if(results.length) this.build({secuses: true, page: 1, results: results});
+                else this.empty();
+            };
+            return category;
+        }
+
         var comp = new Lampa.InteractionMain(object);
         comp.create = function() {
-            getKinopoiskData();
-            var rows = dashboardRows(Lampa.Storage.get('kinopoisk_movies', []));
-            if(rows.length) this.build(rows);
-            else this.empty();
+            var self = this;
+            var cachedRows = dashboardRows(Lampa.Storage.get('kinopoisk_movies', []));
+            if(cachedRows.length) {
+                this.build(cachedRows);
+                getKinopoiskData();
+            } else {
+                getKinopoiskData(function() {
+                    var rows = dashboardRows(Lampa.Storage.get('kinopoisk_movies', []));
+                    if(rows.length) self.build(rows);
+                    else self.empty();
+                }, this.empty.bind(this));
+            }
         };
         return comp;
     }
@@ -434,7 +469,7 @@
     function startPlugin() {
         var manifest = {
             type: 'video',
-            version: '0.7.0',
+            version: '0.8.0',
             name: 'Кинопоиск',
             description: '',
             component: 'kinopoisk'
