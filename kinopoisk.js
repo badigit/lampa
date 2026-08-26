@@ -60,22 +60,27 @@
         return movie.media_type === 'tv' || movie.first_air_date || movie.name ? 'tv' : 'movie';
     }
 
+    function isAnimation(movie) {
+        return (movie.genre_ids || []).some(function(id) {
+            return Number(id) === 16;
+        }) || (movie.genres || []).some(function(genre) {
+            return Number(genre.id) === 16;
+        });
+    }
+
     function isWatched(movie) {
         var status = Lampa.Favorite.check(movie);
         return Boolean(status && (status.viewed || status.history));
     }
 
-    function prepareMovies(movies) {
-        var kind = Lampa.Storage.get('kinopoisk_kind', 'all');
+    function prepareMovies(movies, options) {
         var sort = Lampa.Storage.get('kinopoisk_sort', 'newest');
         var hideWatched = Lampa.Storage.get('kinopoisk_hide_watched', false);
         var result = movies.slice();
 
-        if(kind !== 'all') result = result.filter(function(movie) {
-            return movieKind(movie) === kind;
-        });
+        if(options && options.filter) result = result.filter(options.filter);
 
-        if(hideWatched) result = result.filter(function(movie) {
+        if(hideWatched && !(options && options.keepWatched)) result = result.filter(function(movie) {
             return !isWatched(movie);
         });
 
@@ -95,6 +100,44 @@
         return result;
     }
 
+    function dashboardRows(movies) {
+        var rows = [
+            {
+                title: 'Фильмы',
+                results: prepareMovies(movies, {filter: function(movie) {
+                    return movieKind(movie) === 'movie' && !isAnimation(movie);
+                }}),
+                nomore: true
+            },
+            {
+                title: 'Сериалы',
+                results: prepareMovies(movies, {filter: function(movie) {
+                    return movieKind(movie) === 'tv' && !isAnimation(movie);
+                }}),
+                nomore: true
+            },
+            {
+                title: 'Мультфильмы',
+                results: prepareMovies(movies, {filter: isAnimation}),
+                nomore: true
+            },
+            {
+                title: 'Непросмотренные',
+                results: prepareMovies(movies, {
+                    keepWatched: true,
+                    filter: function(movie) {
+                        return !isWatched(movie);
+                    }
+                }),
+                nomore: true
+            }
+        ];
+
+        return rows.filter(function(row) {
+            return row.results.length > 0;
+        });
+    }
+
     function refreshKinopoiskActivity() {
         var active = Lampa.Activity.active();
         if(active && active.component === 'kinopoisk') Lampa.Activity.replace({}, false);
@@ -102,7 +145,6 @@
 
     function showListControls() {
         var sort = Lampa.Storage.get('kinopoisk_sort', 'newest');
-        var kind = Lampa.Storage.get('kinopoisk_kind', 'all');
         var hideWatched = Lampa.Storage.get('kinopoisk_hide_watched', false);
 
         Lampa.Select.show({
@@ -113,10 +155,7 @@
                 {title: 'Старые сверху', setting: 'kinopoisk_sort', value: 'oldest', selected: sort === 'oldest'},
                 {title: 'По рейтингу', setting: 'kinopoisk_sort', value: 'rating', selected: sort === 'rating'},
                 {title: 'По названию', setting: 'kinopoisk_sort', value: 'title', selected: sort === 'title'},
-                {title: 'Тип', separator: true},
-                {title: 'Фильмы и сериалы', setting: 'kinopoisk_kind', value: 'all', selected: kind === 'all'},
-                {title: 'Только фильмы', setting: 'kinopoisk_kind', value: 'movie', selected: kind === 'movie'},
-                {title: 'Только сериалы', setting: 'kinopoisk_kind', value: 'tv', selected: kind === 'tv'},
+                {title: 'Просмотренные', separator: true},
                 {title: hideWatched ? 'Показывать просмотренные' : 'Скрыть просмотренные', setting: 'kinopoisk_hide_watched', value: !hideWatched}
             ],
             onSelect: function(item) {
@@ -281,12 +320,12 @@
     };
 
     function component(object) {
-        var comp = new Lampa.InteractionCategory(object);
+        var comp = new Lampa.InteractionMain(object);
         comp.create = function() {
-            Api.full(object, this.build.bind(this), this.empty.bind(this));
-        };
-        comp.nextPageReuest = function(object, resolve, reject) {
-            Api.full(object, resolve.bind(comp), reject.bind(comp));
+            getKinopoiskData();
+            var rows = dashboardRows(Lampa.Storage.get('kinopoisk_movies', []));
+            if(rows.length) this.build(rows);
+            else this.empty();
         };
         return comp;
     }
@@ -395,7 +434,7 @@
     function startPlugin() {
         var manifest = {
             type: 'video',
-            version: '0.6.0',
+            version: '0.7.0',
             name: 'Кинопоиск',
             description: '',
             component: 'kinopoisk'
@@ -462,23 +501,6 @@
             },
             field: {
                 name: 'Сортировка списка'
-            },
-            onChange: refreshKinopoiskActivity
-        });
-        Lampa.SettingsApi.addParam({
-            component: 'kinopoisk',
-            param: {
-                name: 'kinopoisk_kind',
-                type: 'select',
-                values: {
-                    all: 'Фильмы и сериалы',
-                    movie: 'Только фильмы',
-                    tv: 'Только сериалы'
-                },
-                default: 'all'
-            },
-            field: {
-                name: 'Тип контента'
             },
             onChange: refreshKinopoiskActivity
         });
