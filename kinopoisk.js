@@ -169,22 +169,18 @@
 
     function getKinopoiskData() {
         console.log('Kinopoisk', 'Starting to get Kinopoisk data...');
-        var oauth = Lampa.Storage.get('kinopoisk_access_token');
-        // google script is used to act as CORS proxy
-        network.silent('https://script.google.com/macros/s/AKfycbwQhxl9xQPv46uChWJ1UDg6BjSmefbSlTRUoSZz5f1rZDRvdhAGTi6RHyXwcSeyBtPr/exec?oauth=' + oauth, function(data) { // on success
+        network.silent('https://frigate.dimba.ru/kinopoisk/v1/planned?user=372870', function(data) { // on success
             processKinopoiskData(data);
         }, function(data) { // on error
-            console.log('Kinopoisk', 'Error, google script', data);
+            console.log('Kinopoisk', 'Error, personal proxy', data);
+            Lampa.Noty.show('Не удалось обновить список Кинопоиска');
         });
     }
 
     function full(params, oncomplete, onerror) {
         // https://github.com/yumata/lampa-source/blob/main/src/utils/reguest.js
         // https://github.com/yumata/lampa-source/blob/main/plugins/collections/api.js
-        var oauth = Lampa.Storage.get('kinopoisk_access_token');
-        if(oauth) {
-            getKinopoiskData();
-        }
+        getKinopoiskData();
         oncomplete({
             "secuses": true,
             "page": 1,
@@ -315,24 +311,16 @@
     function startPlugin() {
         var manifest = {
             type: 'video',
-            version: '0.4.0',
+            version: '0.5.0',
             name: 'Кинопоиск',
             description: '',
             component: 'kinopoisk'
         };
         Lampa.Manifest.plugins = manifest;
         Lampa.Component.add('kinopoisk', component);
-        if(Lampa.Storage.get('kinopoisk_access_token', '') !== '' && Lampa.Storage.get('kinopoisk_token_expires', 0) < Date.now()) { // refresh token needed
-            console.log('Kinopoisk', 'Token should be refreshed')
-            getToken(Lampa.Storage.get('kinopoisk_refresh_token', ''), true);
-        }
-
         function add() {
             var button = $("<li class=\"menu__item selector\">\n            <div class=\"menu__ico\">\n                <svg width=\"239\" height=\"239\" viewBox=\"0 0 239 239\" fill=\"currentColor\" xmlns=\"http://www.w3.org/2000/svg\" xml:space=\"preserve\"><path fill=\"currentColor\" d=\"M215 121.415l-99.297-6.644 90.943 36.334a106.416 106.416 0 0 0 8.354-29.69z\" /><path fill=\"currentColor\" d=\"M194.608 171.609C174.933 197.942 143.441 215 107.948 215 48.33 215 0 166.871 0 107.5 0 48.13 48.33 0 107.948 0c35.559 0 67.102 17.122 86.77 43.539l-90.181 48.07L162.57 32.25h-32.169L90.892 86.862V32.25H64.77v150.5h26.123v-54.524l39.509 54.524h32.169l-56.526-57.493 88.564 46.352z\" /><path d=\"M206.646 63.895l-90.308 36.076L215 93.583a106.396 106.396 0 0 0-8.354-29.688z\" fill=\"currentColor\"/></svg>\n            </div>\n            <div class=\"menu__text\">".concat(manifest.name, "</div>\n        </li>"));
             button.on('hover:enter', function() {
-                if(Lampa.Storage.get('kinopoisk_access_token', '') == '') { // initial authorization needed
-                    getDeviceCode();
-                }
                 Lampa.Activity.push({
                     url: '',
                     title: manifest.name,
@@ -363,51 +351,9 @@
                 type: 'title'
             },
             field: {
-                name: 'Аккаунт',
+                name: 'Mr.Voodoo · публичная папка, вход не требуется',
             }
         })
-        var kinopoisk_email = Lampa.Storage.get('kinopoisk_email', false);
-        Lampa.SettingsApi.addParam({
-            component: 'kinopoisk',
-            param: {
-                type: 'button',
-                name: 'kinopoisk_auth'
-            },
-            field: {
-                name: kinopoisk_email ? kinopoisk_email : 'Авторизоваться',
-            },
-            onChange: () => {
-                if (Lampa.Storage.get('kinopoisk_email', false)) { // user authorized
-                    Lampa.Select.show({
-                        title: 'Выйти из аккаунта',
-                        items: [{
-                            title: 'Да',
-                            confirm: true
-                        }, {
-                            title: 'Нет'
-                        }],
-                        onSelect: (a) => {
-                            if(a.confirm) {
-                                Lampa.Storage.set('kinopoisk_email', '');
-                                Lampa.Storage.set('kinopoisk_access_token', '');
-                                Lampa.Storage.set('kinopoisk_refresh_token', '');
-                                // Lampa.Storage.set('kinopoisk_movies', []);
-                                Lampa.Storage.set('kinopoisk_token_expires', 0); 
-                                $('div[data-name="kinopoisk_auth"]').find('.settings-param__name').text('Авторизоваться');                           
-                            }
-
-                            Lampa.Controller.toggle('settings_component');
-                        },
-                        onBack: ()=>{
-                            Lampa.Controller.toggle('settings_component');
-                        },
-                    })
-                } else { // user not authorized
-                    Lampa.Controller.toContent(); // hide settings menu
-                    getDeviceCode(); // start auth process
-                }
-            }
-        });
 
         Lampa.SettingsApi.addParam({
             component: 'kinopoisk',
