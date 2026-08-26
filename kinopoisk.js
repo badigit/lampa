@@ -136,7 +136,11 @@
             var all = sectionMovies(movies, definition.section);
             return {
                 title: definition.title,
-                results: all.slice(0, 5),
+                results: all.slice(0, 5).map(function(movie) {
+                    var card = Object.assign({}, movie);
+                    delete card.ready;
+                    return card;
+                }),
                 more: all.length > 5,
                 onMore: function() {
                     Lampa.Activity.push({
@@ -340,7 +344,11 @@
         if(object.section) {
             var category = new Lampa.InteractionCategory(object);
             category.create = function() {
-                var results = sectionMovies(Lampa.Storage.get('kinopoisk_movies', []), object.section);
+                var results = sectionMovies(Lampa.Storage.get('kinopoisk_movies', []), object.section).map(function(movie) {
+                    var card = Object.assign({}, movie);
+                    delete card.ready;
+                    return card;
+                });
                 if(results.length) this.build({secuses: true, page: 1, results: results});
                 else this.empty();
             };
