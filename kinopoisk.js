@@ -2,6 +2,7 @@
     'use strict';
     var network = new Lampa.Reguest();
     var PROFILE_LIMIT = 300;
+    var skipNextUpdate = {};
     var PROFILES = {
         dima: {title: 'Дима', user: '372870', cache: 'kinopoisk_movies'},
         asya: {title: 'Ася', user: 'snosok', cache: 'kinopoisk_movies_asya'}
@@ -196,7 +197,9 @@
 
     function refreshKinopoiskActivity() {
         var active = Lampa.Activity.active();
-        if(active && active.component === 'kinopoisk') Lampa.Activity.replace({skip_update: false}, false);
+        var profile = activeProfile();
+        delete skipNextUpdate[profile];
+        if(active && active.component === 'kinopoisk') Lampa.Activity.replace({}, false);
     }
 
     function showProfileControls() {
@@ -443,7 +446,8 @@
                 built = true;
             }
 
-            if(object.skip_update) {
+            if(skipNextUpdate[profile]) {
+                delete skipNextUpdate[profile];
                 if(!built) this.empty();
                 return;
             }
@@ -465,7 +469,8 @@
                 } else {
                     var active = Lampa.Activity.active();
                     if(active && active.component === 'kinopoisk' && !active.section && activeProfile() === profile) {
-                        Lampa.Activity.replace({skip_update: true}, false);
+                        skipNextUpdate[profile] = true;
+                        Lampa.Activity.replace({}, false);
                     }
                 }
             }, function() {
@@ -579,7 +584,7 @@
     function startPlugin() {
         var manifest = {
             type: 'video',
-            version: '0.9.0',
+            version: '0.9.1',
             name: 'Кинопоиск',
             description: '',
             component: 'kinopoisk'
