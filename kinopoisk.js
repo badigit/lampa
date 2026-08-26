@@ -77,7 +77,9 @@
                 const existsInLocalStorage = kinopoiskMovies.some(km => km.kinopoisk_id === String(m.movie.id));
                 if (!existsInLocalStorage) {
                     // get movie data
-                    var title = m.movie.title.localized || m.movie.title.original;
+                    var title = m.movie.title
+                        ? (m.movie.title.localized || m.movie.title.original || String(m.movie.id))
+                        : String(m.movie.id);
                     console.log('Kinopoisk', 'Getting details for movie: ' + String(m.movie.id) + ', movie title: ' + title);
                     // getting imdb id based on kinopoisk id
                     network.silent('https://kinopoiskapiunofficial.tech/api/v2.2/films/' + String(m.movie.id), function(data) {
@@ -311,7 +313,7 @@
     function startPlugin() {
         var manifest = {
             type: 'video',
-            version: '0.5.0',
+            version: '0.5.1',
             name: 'Кинопоиск',
             description: '',
             component: 'kinopoisk'
