@@ -196,7 +196,7 @@
 
     function refreshKinopoiskActivity() {
         var active = Lampa.Activity.active();
-        if(active && active.component === 'kinopoisk') Lampa.Activity.replace({}, false);
+        if(active && active.component === 'kinopoisk') Lampa.Activity.replace({skip_update: false}, false);
     }
 
     function showProfileControls() {
