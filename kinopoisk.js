@@ -56,6 +56,79 @@
         }
     }
 
+    function movieKind(movie) {
+        return movie.media_type === 'tv' || movie.first_air_date || movie.name ? 'tv' : 'movie';
+    }
+
+    function isWatched(movie) {
+        var status = Lampa.Favorite.check(movie);
+        return Boolean(status && (status.viewed || status.history));
+    }
+
+    function prepareMovies(movies) {
+        var kind = Lampa.Storage.get('kinopoisk_kind', 'all');
+        var sort = Lampa.Storage.get('kinopoisk_sort', 'newest');
+        var hideWatched = Lampa.Storage.get('kinopoisk_hide_watched', false);
+        var result = movies.slice();
+
+        if(kind !== 'all') result = result.filter(function(movie) {
+            return movieKind(movie) === kind;
+        });
+
+        if(hideWatched) result = result.filter(function(movie) {
+            return !isWatched(movie);
+        });
+
+        result.sort(function(a, b) {
+            var aOrder = typeof a.kinopoisk_order === 'number' ? a.kinopoisk_order : Number.MAX_SAFE_INTEGER;
+            var bOrder = typeof b.kinopoisk_order === 'number' ? b.kinopoisk_order : Number.MAX_SAFE_INTEGER;
+            if(sort === 'oldest') return bOrder - aOrder;
+            if(sort === 'rating') return (Number(b.vote_average) || 0) - (Number(a.vote_average) || 0);
+            if(sort === 'title') {
+                var aTitle = a.title || a.name || a.original_title || a.original_name || '';
+                var bTitle = b.title || b.name || b.original_title || b.original_name || '';
+                return aTitle.localeCompare(bTitle, 'ru');
+            }
+            return aOrder - bOrder;
+        });
+
+        return result;
+    }
+
+    function refreshKinopoiskActivity() {
+        var active = Lampa.Activity.active();
+        if(active && active.component === 'kinopoisk') Lampa.Activity.replace({}, false);
+    }
+
+    function showListControls() {
+        var sort = Lampa.Storage.get('kinopoisk_sort', 'newest');
+        var kind = Lampa.Storage.get('kinopoisk_kind', 'all');
+        var hideWatched = Lampa.Storage.get('kinopoisk_hide_watched', false);
+
+        Lampa.Select.show({
+            title: 'Кинопоиск: список',
+            items: [
+                {title: 'Сортировка', separator: true},
+                {title: 'Новые сверху', setting: 'kinopoisk_sort', value: 'newest', selected: sort === 'newest'},
+                {title: 'Старые сверху', setting: 'kinopoisk_sort', value: 'oldest', selected: sort === 'oldest'},
+                {title: 'По рейтингу', setting: 'kinopoisk_sort', value: 'rating', selected: sort === 'rating'},
+                {title: 'По названию', setting: 'kinopoisk_sort', value: 'title', selected: sort === 'title'},
+                {title: 'Тип', separator: true},
+                {title: 'Фильмы и сериалы', setting: 'kinopoisk_kind', value: 'all', selected: kind === 'all'},
+                {title: 'Только фильмы', setting: 'kinopoisk_kind', value: 'movie', selected: kind === 'movie'},
+                {title: 'Только сериалы', setting: 'kinopoisk_kind', value: 'tv', selected: kind === 'tv'},
+                {title: hideWatched ? 'Показывать просмотренные' : 'Скрыть просмотренные', setting: 'kinopoisk_hide_watched', value: !hideWatched}
+            ],
+            onSelect: function(item) {
+                Lampa.Storage.set(item.setting, item.value);
+                refreshKinopoiskActivity();
+            },
+            onBack: function() {
+                Lampa.Controller.toggle('content');
+            }
+        });
+    }
+
     function processKinopoiskData(data) {
         // use cache
         if(data && data.data.userProfile && data.data.userProfile.userData && data.data.userProfile.userData.plannedToWatch) {
@@ -69,8 +142,15 @@
                 Lampa.Noty.show('В списке "Буду смотреть" Кинопоиска нет фильмов');
             }
             const receivedMovieIds = new Set(receivedMovies.map(m => String(m.movie.id)));
+            const receivedMovieOrder = {};
+            receivedMovies.forEach(function(item, index) {
+                receivedMovieOrder[String(item.movie.id)] = index;
+            });
             // filter out movies that are no longer present in receivedMovies
             kinopoiskMovies = kinopoiskMovies.filter(movie => receivedMovieIds.has(String(movie.kinopoisk_id)));
+            kinopoiskMovies.forEach(function(movie) {
+                movie.kinopoisk_order = receivedMovieOrder[String(movie.kinopoisk_id)];
+            });
             Lampa.Storage.set('kinopoisk_movies', JSON.stringify(kinopoiskMovies));
             let processedItems = 1;
             receivedMovies.forEach(m => {
@@ -122,6 +202,8 @@
 
                                         if (movieDate <= new Date()) {                                            
                                             movieItem.kinopoisk_id = String(m.movie.id);
+                                            movieItem.kinopoisk_order = receivedMovieOrder[String(m.movie.id)];
+                                            movieItem.media_type = movieItem.first_air_date || movieItem.name ? 'tv' : 'movie';
                                             movieItem.source = "tmdb";
                                             kinopoiskMovies = Lampa.Storage.get('kinopoisk_movies', []); // re-read data if another process modified it
                                             kinopoiskMovies.unshift(movieItem);
@@ -186,7 +268,7 @@
         oncomplete({
             "secuses": true,
             "page": 1,
-            "results": Lampa.Storage.get('kinopoisk_movies', [])
+            "results": prepareMovies(Lampa.Storage.get('kinopoisk_movies', []))
         });
     }
 
@@ -313,7 +395,7 @@
     function startPlugin() {
         var manifest = {
             type: 'video',
-            version: '0.5.1',
+            version: '0.6.0',
             name: 'Кинопоиск',
             description: '',
             component: 'kinopoisk'
@@ -339,6 +421,24 @@
                 if(e.type == 'ready') add();
             });
         }
+        function addListControls() {
+            $('#head_kinopoisk_controls').remove();
+            var button = $('<div id="head_kinopoisk_controls" class="head__action selector" title="Сортировка и фильтры Кинопоиска"><svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><path d="M3 5h18v2H3V5zm3 6h12v2H6v-2zm4 6h4v2h-4v-2z"/></svg></div>');
+            button.on('hover:enter hover:click hover:touch', showListControls);
+            $('.head__actions').append(button);
+
+            function toggle(event) {
+                var active = event && event.object ? event.object : Lampa.Activity.active();
+                button.toggle(Boolean(active && active.component === 'kinopoisk'));
+            }
+
+            Lampa.Listener.follow('activity', toggle);
+            toggle();
+        }
+        if(window.appready) addListControls();
+        else Lampa.Listener.follow('app', function(e) {
+            if(e.type == 'ready') addListControls();
+        });
         // SETTINGS
         if(!window.lampa_settings.kinopoisk) { // re-use kinopoisk_ratings element, if exists
             Lampa.SettingsApi.addComponent({
@@ -347,6 +447,54 @@
                 name: 'Кинопоиск'
             });
         }
+        Lampa.SettingsApi.addParam({
+            component: 'kinopoisk',
+            param: {
+                name: 'kinopoisk_sort',
+                type: 'select',
+                values: {
+                    newest: 'Новые сверху',
+                    oldest: 'Старые сверху',
+                    rating: 'По рейтингу',
+                    title: 'По названию'
+                },
+                default: 'newest'
+            },
+            field: {
+                name: 'Сортировка списка'
+            },
+            onChange: refreshKinopoiskActivity
+        });
+        Lampa.SettingsApi.addParam({
+            component: 'kinopoisk',
+            param: {
+                name: 'kinopoisk_kind',
+                type: 'select',
+                values: {
+                    all: 'Фильмы и сериалы',
+                    movie: 'Только фильмы',
+                    tv: 'Только сериалы'
+                },
+                default: 'all'
+            },
+            field: {
+                name: 'Тип контента'
+            },
+            onChange: refreshKinopoiskActivity
+        });
+        Lampa.SettingsApi.addParam({
+            component: 'kinopoisk',
+            param: {
+                name: 'kinopoisk_hide_watched',
+                type: 'trigger',
+                default: false
+            },
+            field: {
+                name: 'Скрывать просмотренные',
+                description: 'Скрывает карточки из истории и отмеченные просмотренными'
+            },
+            onChange: refreshKinopoiskActivity
+        });
         Lampa.SettingsApi.addParam({
             component: 'kinopoisk',
             param: {
