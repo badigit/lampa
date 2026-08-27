@@ -4,8 +4,8 @@
     var PROFILE_LIMIT = 300;
     var skipNextUpdate = {};
     var PROFILES = {
-        dima: {title: 'Дима', user: '372870', cache: 'kinopoisk_movies'},
-        asya: {title: 'Ася', user: 'snosok', cache: 'kinopoisk_movies_asya'}
+        dima: {title: 'Дима', user: '372870', cache: 'kinopoisk_movies', idsCache: 'kinopoisk_movie_ids'},
+        asya: {title: 'Ася', user: 'snosok', cache: 'kinopoisk_movies_asya', idsCache: 'kinopoisk_movie_ids_asya'}
     };
 
     function activeProfile() {
@@ -17,8 +17,12 @@
 
         var dimaMovies = Lampa.Storage.get(PROFILES.dima.cache, []);
         var asyaIds = {};
-        Lampa.Storage.get(PROFILES.asya.cache, []).forEach(function(movie) {
-            asyaIds[String(movie.kinopoisk_id)] = true;
+        var storedAsyaIds = Lampa.Storage.get(PROFILES.asya.idsCache, []);
+        if(!storedAsyaIds.length) storedAsyaIds = Lampa.Storage.get(PROFILES.asya.cache, []).map(function(movie) {
+            return movie.kinopoisk_id;
+        });
+        storedAsyaIds.forEach(function(id) {
+            asyaIds[String(id)] = true;
         });
 
         return dimaMovies.filter(function(movie) {
@@ -242,6 +246,9 @@
             var cacheKey = PROFILES[profile].cache;
             var kinopoiskMovies = Lampa.Storage.get(cacheKey, []);
             var allReceivedMovies = data.data.userProfile.userData.plannedToWatch.movies.items;
+            Lampa.Storage.set(PROFILES[profile].idsCache, JSON.stringify(allReceivedMovies.map(function(item) {
+                return String(item.movie.id);
+            })));
             var receivedMovies = allReceivedMovies.slice(0, PROFILE_LIMIT);
             var receivedMoviesCount = receivedMovies.length;
             var moviesCount = data.data.userProfile.userData.plannedToWatch.movies.total;
@@ -574,7 +581,7 @@
     function startPlugin() {
         var manifest = {
             type: 'video',
-            version: '0.9.2',
+            version: '0.9.3',
             name: 'Кинопоиск',
             description: '',
             component: 'kinopoisk'
@@ -725,6 +732,8 @@
             onChange: () => {
                 Lampa.Storage.set('kinopoisk_movies', []);
                 Lampa.Storage.set('kinopoisk_movies_asya', []);
+                Lampa.Storage.set('kinopoisk_movie_ids', []);
+                Lampa.Storage.set('kinopoisk_movie_ids_asya', []);
                 Lampa.Noty.show('Кэш Кинопоиска очищен');
             }
         });        
