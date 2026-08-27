@@ -15,18 +15,16 @@
     function profileMovies(profile) {
         if(profile !== 'common') return Lampa.Storage.get(PROFILES[profile].cache, []);
 
-        var merged = {};
-        Object.keys(PROFILES).forEach(function(profileName) {
-            Lampa.Storage.get(PROFILES[profileName].cache, []).forEach(function(movie) {
-                var id = String(movie.kinopoisk_id);
-                if(!merged[id]) {
-                    merged[id] = Object.assign({}, movie, {kinopoisk_profiles: []});
-                }
-                merged[id].kinopoisk_profiles.push(profileName);
-            });
+        var dimaMovies = Lampa.Storage.get(PROFILES.dima.cache, []);
+        var asyaIds = {};
+        Lampa.Storage.get(PROFILES.asya.cache, []).forEach(function(movie) {
+            asyaIds[String(movie.kinopoisk_id)] = true;
         });
-        return Object.keys(merged).map(function(id) {
-            return merged[id];
+
+        return dimaMovies.filter(function(movie) {
+            return asyaIds[String(movie.kinopoisk_id)];
+        }).map(function(movie) {
+            return Object.assign({}, movie, {kinopoisk_profiles: ['dima', 'asya']});
         });
     }
 
@@ -139,9 +137,6 @@
                 return !isWatched(movie);
             }
         });
-        if(section === 'matches') return prepareMovies(movies, {filter: function(movie) {
-            return movie.kinopoisk_profiles && movie.kinopoisk_profiles.length > 1;
-        }});
         return prepareMovies(movies);
     }
 
@@ -164,11 +159,6 @@
                 section: 'unwatched'
             }
         ];
-        if(profile === 'common') definitions.unshift({
-            title: 'Совпадения',
-            section: 'matches'
-        });
-
         return definitions.map(function(definition) {
             var all = sectionMovies(movies, definition.section);
             return {
@@ -584,7 +574,7 @@
     function startPlugin() {
         var manifest = {
             type: 'video',
-            version: '0.9.1',
+            version: '0.9.2',
             name: 'Кинопоиск',
             description: '',
             component: 'kinopoisk'
